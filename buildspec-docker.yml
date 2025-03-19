@@ -26,7 +26,7 @@ phases:
       - export NEXT_VERSION="v$((IMAGE_TAG + 1))"
       - echo $NEXT_VERSION > app/version.txt
       - export IMAGE_URI=626635421987.dkr.ecr.us-east-1.amazonaws.com/my-app-repo-$ENVIRONMENT:$NEXT_VERSION
-      - docker build -t $IMAGE_URI -f ecr/Dockerfile .
+      - docker build -t $IMAGE_URI -f app/Dockerfile .
       - echo "Tagging image: $IMAGE_URI"
       - echo "Running security scan with Trivy..."
       - trivy image --severity HIGH,CRITICAL --no-progress $IMAGE_URI || echo "⚠️ Security scan completed with vulnerabilities!"
@@ -50,5 +50,4 @@ phases:
 
 artifacts:
   files:
-    - '**/*'
     - imagedefinitions.json
