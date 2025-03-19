@@ -9,11 +9,13 @@ phases:
     commands:
       - echo "Installing dependencies..."
       - pip install -r app/requirements.txt
+      
       - echo "Installing AWS CLI..."
       - curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
       - unzip awscliv2.zip
       - sudo ./aws/install
       - aws --version  # Verify AWS CLI
+      
       - echo "Installing Trivy..."
       - curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh
       - trivy --version  # Verify Trivy
@@ -21,12 +23,32 @@ phases:
   build:
     commands:
       - echo "Building the Docker image for environment: $ENVIRONMENT..."
+      
+      # Debugging - Print current directory & list files
+      - echo "Current Directory:"
+      - pwd
+      - echo "Listing all files:"
+      - ls -la
+      
+      # Ensure Dockerfile exists
+      - if [ ! -f Dockerfile ]; then echo "❌ ERROR: Dockerfile not found!"; exit 1; fi
+
+      # Ensure version.txt exists
       - if [ ! -f app/version.txt ]; then echo "v1" > app/version.txt; fi
+
+      # Increment version
       - export IMAGE_TAG=$(cat app/version.txt | sed 's/v//')
       - export NEXT_VERSION="v$((IMAGE_TAG + 1))"
       - echo $NEXT_VERSION > app/version.txt
+
+      # Define Image URI
       - export IMAGE_URI=626635421987.dkr.ecr.us-east-1.amazonaws.com/my-app-repo-$ENVIRONMENT:$NEXT_VERSION
-      - docker build -t $IMAGE_URI -f ./Dockerfile .
+
+      # Run Docker Build
+      - echo "Building Docker image: $IMAGE_URI"
+      - docker build -t $IMAGE_URI -f Dockerfile .
+
+      # Tag and scan image
       - echo "Tagging image: $IMAGE_URI"
       - echo "Running security scan with Trivy..."
       - trivy image --severity HIGH,CRITICAL --no-progress $IMAGE_URI || echo "⚠️ Security scan completed with vulnerabilities!"
@@ -35,8 +57,10 @@ phases:
     commands:
       - echo "Logging in to Amazon ECR for environment: $ENVIRONMENT..."
       - aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 626635421987.dkr.ecr.us-east-1.amazonaws.com
+      
       - echo "Pushing Docker image to ECR for environment: $ENVIRONMENT..."
       - docker push $IMAGE_URI
+      
       - echo "Creating imagedefinitions.json..."
       - |
         echo '[{
@@ -44,9 +68,10 @@ phases:
           "imageUri": "'$IMAGE_URI'"
         }]' > imagedefinitions.json
       - cat imagedefinitions.json
+
       - echo "Updating ECS Service for environment: $ENVIRONMENT..."
       - aws ecs update-service --cluster my-app-cluster-$ENVIRONMENT --service my-app-service-$ENVIRONMENT --force-new-deployment
-      - echo "ECS Service updated successfully for environment: $ENVIRONMENT."
+      - echo "✅ ECS Service updated successfully for environment: $ENVIRONMENT."
 
 artifacts:
   files:
