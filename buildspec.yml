@@ -1,0 +1,77 @@
+version: 0.2
+
+env:
+  variables:
+    ENVIRONMENT: "dev"  # Default environment, can be overridden
+    TF_VAR_environment: $ENVIRONMENT  # Pass environment to Terraform
+    DESTROY_INFRA: "false"  # Default to not destroy infrastructure, can be overridden
+
+phases:
+  install:
+    commands:
+      - echo "Installing dependencies..."
+      - pip install -r requirements.txt
+      - echo "Installing Terraform..."
+      - wget https://releases.hashicorp.com/terraform/1.5.7/terraform_1.5.7_linux_amd64.zip
+      - unzip terraform_1.5.7_linux_amd64.zip
+      - mv terraform /usr/local/bin/
+      - terraform --version  # Verify installation
+      - echo "Installing AWS CLI..."
+      - curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+      - unzip awscliv2.zip
+      - sudo ./aws/install
+      - aws --version  # Verify AWS CLI
+      - echo "Installing Trivy..."
+      - curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh
+      - trivy --version  # Verify Trivy
+
+  pre_build:
+    commands:
+      - echo "Initializing Terraform for environment: $ENVIRONMENT..."
+      - terraform init
+      - echo "Applying Terraform configuration for environment: $ENVIRONMENT..."
+      - terraform apply -auto-approve
+
+  build:
+    commands:
+      - echo "Building the Docker image for environment: $ENVIRONMENT..."
+      - if [ ! -f version.txt ]; then echo "v1" > version.txt; fi
+      - export IMAGE_TAG=$(cat version.txt | sed 's/v//')
+      - export NEXT_VERSION="v$((IMAGE_TAG + 1))"
+      - echo $NEXT_VERSION > version.txt
+      - export IMAGE_URI=626635421987.dkr.ecr.us-east-1.amazonaws.com/my-app-repo-$ENVIRONMENT:$NEXT_VERSION
+      - docker build -t $IMAGE_URI .
+      - echo "Tagging image: $IMAGE_URI"
+      - echo "Running security scan with Trivy..."
+      - trivy image --severity HIGH,CRITICAL --no-progress $IMAGE_URI || echo "⚠️ Security scan completed with vulnerabilities!"
+
+  post_build:
+    commands:
+      - echo "Logging in to Amazon ECR for environment: $ENVIRONMENT..."
+      - aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 626635421987.dkr.ecr.us-east-1.amazonaws.com
+      - echo "Pushing Docker image to ECR for environment: $ENVIRONMENT..."
+      - docker push $IMAGE_URI
+      - echo "Creating imagedefinitions.json..."
+      - |
+        echo '[{
+          "name": "my-app-container",
+          "imageUri": "'$IMAGE_URI'"
+        }]' > imagedefinitions.json
+      - cat imagedefinitions.json
+      - echo "Updating ECS Service for environment: $ENVIRONMENT..."
+      - aws ecs update-service --cluster my-app-cluster-$ENVIRONMENT --service my-app-service-$ENVIRONMENT --force-new-deployment
+      - echo "ECS Service updated successfully for environment: $ENVIRONMENT."
+
+  destroy:
+    commands:
+      - if [ "$DESTROY_INFRA" = "true" ]; then
+          echo "Destroying Terraform-managed infrastructure for environment: $ENVIRONMENT...";
+          terraform destroy -auto-approve;
+        else
+          echo "Skipping infrastructure destruction (DESTROY_INFRA is not set to 'true').";
+        fi
+
+artifacts:
+  files:
+    - '**/*'
+    - imagedefinitions.json
