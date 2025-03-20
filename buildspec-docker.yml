@@ -33,16 +33,8 @@ phases:
       # Ensure Dockerfile exists
       - if [ ! -f app/Dockerfile ]; then echo "❌ ERROR: Dockerfile not found!"; exit 1; fi
 
-      # Ensure version.txt exists
-      - if [ ! -f app/version.txt ]; then echo "v1" > app/version.txt; fi
-
-      # Increment version
-      - export IMAGE_TAG=$(cat app/version.txt | sed 's/v//')
-      - export NEXT_VERSION="v$((IMAGE_TAG + 1))"
-      - echo $NEXT_VERSION > app/version.txt
-
       # Define Image URI
-      - export IMAGE_URI=626635421987.dkr.ecr.us-east-1.amazonaws.com/my-app-repo-$ENVIRONMENT:$NEXT_VERSION
+      - export IMAGE_URI=626635421987.dkr.ecr.us-east-1.amazonaws.com/my-app-repo-$ENVIRONMENT:latest
 
       # Run Docker Build
       - echo "Building Docker image: $IMAGE_URI"
