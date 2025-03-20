@@ -31,7 +31,7 @@ phases:
       - ls -la
       
       # Ensure Dockerfile exists
-      - if [ ! -f Dockerfile ]; then echo "❌ ERROR: Dockerfile not found!"; exit 1; fi
+      - if [ ! -f app/Dockerfile ]; then echo "❌ ERROR: Dockerfile not found!"; exit 1; fi
 
       # Ensure version.txt exists
       - if [ ! -f app/version.txt ]; then echo "v1" > app/version.txt; fi
@@ -46,7 +46,7 @@ phases:
 
       # Run Docker Build
       - echo "Building Docker image: $IMAGE_URI"
-      - docker build -t $IMAGE_URI .
+      - docker build -t $IMAGE_URI -f app/Dockerfile .
 
       # Tag and scan image
       - echo "Tagging image: $IMAGE_URI"
@@ -58,9 +58,11 @@ phases:
       - echo "Logging in to Amazon ECR for environment: $ENVIRONMENT..."
       - aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 626635421987.dkr.ecr.us-east-1.amazonaws.com
       
+      # Push the Docker image to ECR
       - echo "Pushing Docker image to ECR for environment: $ENVIRONMENT..."
       - docker push $IMAGE_URI
       
+      # Create imagedefinitions.json
       - echo "Creating imagedefinitions.json..."
       - |
         echo '[{
@@ -69,6 +71,7 @@ phases:
         }]' > imagedefinitions.json
       - cat imagedefinitions.json
 
+      # Update ECS Service
       - echo "Updating ECS Service for environment: $ENVIRONMENT..."
       - aws ecs update-service --cluster my-app-cluster-$ENVIRONMENT --service my-app-service-$ENVIRONMENT --force-new-deployment
       - echo "✅ ECS Service updated successfully for environment: $ENVIRONMENT."
@@ -76,4 +79,3 @@ phases:
 artifacts:
   files:
     - imagedefinitions.json
-    - "**/*"
