@@ -42,8 +42,8 @@ phases:
 
   post_build:
     commands:
-      - echo "Starting POST_BUILD phase..."
-      - echo "Pushing Docker image to ECR..."
+      - echo "Starting POST_BUILD phase ..."
+      - echo "Pushing Docker image to ECR ..."
       - docker push $IMAGE_URI
 
       # Enable ECR image scanning
