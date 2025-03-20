@@ -21,7 +21,7 @@ phases:
 
   build:
     commands:
-      - echo "Starting BUILD phase ..."
+      - echo "Starting BUILD phase..."
       - echo "Building the Docker image..."
       
       # Debugging - Print current directory & list files
