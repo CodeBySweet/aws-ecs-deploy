@@ -1,12 +1,9 @@
 version: 0.2
 
-env:
-  variables:
-    ENVIRONMENT: "dev"  # Default environment, can be overridden
-
 phases:
   install:
     commands:
+      - echo "Starting INSTALL phase..."
       - echo "Installing dependencies..."
       - pip install -r app/requirements.txt
       
@@ -16,13 +13,16 @@ phases:
       - sudo ./aws/install
       - aws --version  # Verify AWS CLI
       
-      - echo "Installing Trivy..."
-      - curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh
-      - trivy --version  # Verify Trivy
+      - echo "Installing AWS ECR Credential Helper..."
+      - curl -Lo /usr/local/bin/docker-credential-ecr-login https://amazon-ecr-credential-helper-releases.s3.us-east-2.amazonaws.com/latest/linux-amd64/docker-credential-ecr-login
+      - chmod +x /usr/local/bin/docker-credential-ecr-login
+      - mkdir -p ~/.docker
+      - echo '{"credsStore":"ecr-login"}' > ~/.docker/config.json
 
   build:
     commands:
-      - echo "Building the Docker image for environment: $ENVIRONMENT..."
+      - echo "Starting BUILD phase..."
+      - echo "Building the Docker image..."
       
       # Debugging - Print current directory & list files
       - echo "Current Directory:"
@@ -34,25 +34,45 @@ phases:
       - if [ ! -f app/Dockerfile ]; then echo "❌ ERROR: Dockerfile not found!"; exit 1; fi
 
       # Define Image URI
-      - export IMAGE_URI=626635421987.dkr.ecr.us-east-1.amazonaws.com/my-app-repo-$ENVIRONMENT:latest
+      - export IMAGE_URI=626635421987.dkr.ecr.us-east-1.amazonaws.com/my-app-repo:latest
 
       # Run Docker Build
       - echo "Building Docker image: $IMAGE_URI"
       - docker build -t $IMAGE_URI -f app/Dockerfile .
 
-      # Run Trivy scan
-      - echo "Running security scan with Trivy..."
-      - trivy image --severity HIGH,CRITICAL --no-progress $IMAGE_URI || echo "⚠️ Security scan completed with vulnerabilities!"
-
   post_build:
     commands:
-      - echo "Logging in to Amazon ECR for environment: $ENVIRONMENT..."
-      - aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 626635421987.dkr.ecr.us-east-1.amazonaws.com
-      
-      # Push the Docker image to ECR
-      - echo "Pushing Docker image to ECR for environment: $ENVIRONMENT..."
+      - echo "Starting POST_BUILD phase..."
+      - echo "Pushing Docker image to ECR..."
       - docker push $IMAGE_URI
-      
+
+      # Enable ECR image scanning
+      - echo "Enabling ECR image scanning..."
+      - aws ecr put-image-scanning-configuration --repository-name my-app-repo --image-scanning-configuration scanOnPush=true
+
+      # Wait for the scan to complete
+      - echo "Waiting for ECR image scan to complete..."
+      - SCAN_STATUS="IN_PROGRESS"
+      - while [ "$SCAN_STATUS" = "IN_PROGRESS" ]; do
+          sleep 10
+          SCAN_STATUS=$(aws ecr describe-image-scan-findings --repository-name my-app-repo --image-id imageTag=latest --query 'imageScanStatus.status' --output text)
+          echo "Scan status: $SCAN_STATUS"
+        done
+
+      # Check scan findings
+      - echo "Checking ECR image scan findings..."
+      - FINDINGS=$(aws ecr describe-image-scan-findings --repository-name my-app-repo --image-id imageTag=latest --query 'imageScanFindings.findings' --output json)
+      - echo "Scan findings: $FINDINGS"
+
+      # Fail the build if critical vulnerabilities are found
+      - CRITICAL_VULNERABILITIES=$(echo $FINDINGS | jq '.[] | select(.severity == "CRITICAL")')
+      - if [ -n "$CRITICAL_VULNERABILITIES" ]; then
+          echo "❌ Critical vulnerabilities found in the image. Failing the build."
+          exit 1
+        else
+          echo "✅ No critical vulnerabilities found. Proceeding with deployment."
+        fi
+
       # Create imagedefinitions.json
       - echo "Creating imagedefinitions.json..."
       - |
@@ -63,9 +83,9 @@ phases:
       - cat imagedefinitions.json
 
       # Update ECS Service
-      - echo "Updating ECS Service for environment: $ENVIRONMENT..."
-      - aws ecs update-service --cluster my-app-cluster-$ENVIRONMENT --service my-app-service-$ENVIRONMENT --force-new-deployment
-      - echo "✅ ECS Service updated successfully for environment: $ENVIRONMENT."
+      - echo "Updating ECS Service..."
+      - aws ecs update-service --cluster my-app-cluster --service my-app-service --force-new-deployment
+      - echo "✅ ECS Service updated successfully."
 
 artifacts:
   files:
