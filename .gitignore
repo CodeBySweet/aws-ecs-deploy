@@ -1,6 +1,4 @@
 # Ignore Docker-related files
-Dockerfile
-docker-compose.yml
 .dockerignore
 
 # Ignore Docker build context

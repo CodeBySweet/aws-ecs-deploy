@@ -46,7 +46,7 @@ phases:
 
       # Run Docker Build
       - echo "Building Docker image: $IMAGE_URI"
-      - docker build -t $IMAGE_URI -f Dockerfile .
+      - docker build -t $IMAGE_URI .
 
       # Tag and scan image
       - echo "Tagging image: $IMAGE_URI"
