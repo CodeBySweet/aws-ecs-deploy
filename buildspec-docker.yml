@@ -40,8 +40,7 @@ phases:
       - echo "Building Docker image: $IMAGE_URI"
       - docker build -t $IMAGE_URI -f app/Dockerfile .
 
-      # Tag and scan image
-      - echo "Tagging image: $IMAGE_URI"
+      # Run Trivy scan
       - echo "Running security scan with Trivy..."
       - trivy image --severity HIGH,CRITICAL --no-progress $IMAGE_URI || echo "⚠️ Security scan completed with vulnerabilities!"
 
