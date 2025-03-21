@@ -30,9 +30,8 @@ COPY --from=builder /app /app
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 USER appuser
 
-# Expose the application ports
-EXPOSE 5000 
-EXPOSE 5001  
+# Expose the application port
+EXPOSE 5000
 
 # Command to run the application
 CMD ["python", "app/app.py"]
